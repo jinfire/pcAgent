@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea">
+  <title>My Agent</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div><p class="eyebrow">PERSONAL WORKSPACE</p><h1>My Agent</h1></div>
+      <div class="status-stack">
+        <span id="usage" class="usage" title="누적 추정 API 비용">$0.0000</span>
+        <span id="health" class="health" title="서버 상태"><i></i><span>확인 중</span></span>
+      </div>
+    </header>
+
+    <label class="workspace-picker" for="workspace-select">
+      <span>Project</span>
+      <select id="workspace-select" aria-label="현재 프로젝트"></select>
+    </label>
+
+    <section class="view active" data-view="chat" aria-label="Chat">
+      <nav class="mode-tabs" aria-label="대화 모드">
+        <button type="button" class="mode-tab active" data-mode="chat" aria-selected="true">Chat</button>
+        <button type="button" class="mode-tab" data-mode="agent" aria-selected="false">Agent</button>
+      </nav>
+      <section class="mode-note" id="mode-note"></section>
+      <section id="messages" class="messages" aria-live="polite" aria-label="대화 내용"></section>
+    </section>
+
+    <section class="view" data-view="projects" aria-label="Projects">
+      <div class="section-heading"><div><p class="eyebrow">WORKSPACES</p><h2>Projects & Sessions</h2></div></div>
+      <form id="workspace-form" class="card compact-form">
+        <label>이름<input id="workspace-name" maxlength="100" required placeholder="RoofingWingman"></label>
+        <label>폴더 경로<input id="workspace-path" maxlength="1000" required placeholder="C:\workspace\RoofingWingman"></label>
+        <button type="submit" class="primary">프로젝트 등록</button>
+        <p class="form-note">서버에 설정된 허용 workspace 경계 내부 폴더만 등록됩니다.</p>
+      </form>
+      <section class="card current-workspace">
+        <div><strong id="active-workspace-name">선택된 프로젝트 없음</strong><code id="active-workspace-root"></code></div>
+        <div><button id="rename-workspace" type="button">이름 변경</button><button id="delete-workspace" type="button" class="danger-link">등록 해제</button></div>
+      </section>
+
+      <div class="section-heading row-heading"><h3>Sessions</h3><div><button id="new-chat" type="button">+ Chat</button><button id="new-agent" type="button">+ Agent</button></div></div>
+      <div id="session-list" class="card-list"></div>
+
+      <div class="section-heading row-heading"><h3>Git changes</h3><button id="refresh-git" type="button">새로고침</button></div>
+      <section class="card git-card">
+        <strong id="git-summary">변경사항을 확인하는 중…</strong>
+        <pre id="git-stat" class="git-stat"></pre>
+        <div id="diff-files" class="diff-files"></div>
+        <form id="commit-form" class="commit-form">
+          <label for="commit-message">Commit message</label>
+          <div><input id="commit-message" maxlength="200" required placeholder="변경 내용 요약"><button type="submit" class="danger">Commit</button></div>
+          <p>버튼 확인 후 현재 프로젝트의 안전한 변경 파일만 commit합니다. Push는 지원하지 않습니다.</p>
+        </form>
+      </section>
+    </section>
+
+    <section class="view" data-view="running" aria-label="Running">
+      <div class="section-heading"><p class="eyebrow">LIVE</p><h2>Agent Progress</h2></div>
+      <div id="phase-flow" class="phase-flow" aria-label="작업 단계">
+        <span data-phase="request" class="done">Request</span><b>→</b>
+        <span data-phase="plan">Plan</span><b>→</b>
+        <span data-phase="coding">Coding</span><b>→</b>
+        <span data-phase="test">Test</span><b>→</b>
+        <span data-phase="review">Review</span><b>→</b>
+        <span data-phase="result">Result</span>
+      </div>
+      <section id="run-panel" class="run-panel">
+        <div class="run-title"><span class="idle-mark"></span><strong>대기 중</strong></div>
+        <ol id="plan-steps" class="plan-steps"></ol>
+        <ul id="run-events" class="run-events"></ul>
+      </section>
+    </section>
+
+    <section class="view" data-view="review" aria-label="Review">
+      <div class="section-heading"><p class="eyebrow">QUALITY GATE</p><h2>Latest Review</h2></div>
+      <section id="review-result" class="review-result card empty-card">아직 Reviewer 결과가 없습니다.</section>
+    </section>
+
+    <section class="view" data-view="usage" aria-label="Usage">
+      <div class="section-heading"><p class="eyebrow">TOKENS & COST</p><h2>Usage</h2></div>
+      <section id="usage-detail" class="usage-grid"></section>
+      <p class="form-note">Prompt와 source code는 usage log에 저장하지 않습니다.</p>
+    </section>
+
+    <form id="composer" class="composer">
+      <label for="message-input" class="sr-only">메시지</label>
+      <textarea id="message-input" rows="1" maxlength="20000" placeholder="메시지를 입력하세요" required></textarea>
+      <button id="send-button" type="submit" aria-label="메시지 전송">보내기</button>
+      <p class="hint">Enter 전송 · Shift+Enter 줄바꿈</p>
+    </form>
+  </main>
+
+  <nav class="bottom-nav" aria-label="주요 화면">
+    <button type="button" data-target="chat" class="active"><span>⌁</span>Chat</button>
+    <button type="button" data-target="projects"><span>▦</span>Projects</button>
+    <button type="button" data-target="running"><span>◌</span>Running</button>
+    <button type="button" data-target="review"><span>✓</span>Review</button>
+    <button type="button" data-target="usage"><span>◔</span>Usage</button>
+  </nav>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
