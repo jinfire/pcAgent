@@ -123,6 +123,14 @@ PC에서만 접속할 서버를 실행합니다.
 
 브라우저에서 <http://localhost:8000>을 엽니다. 화면만 확인할 때는 API 키가 없어도 되지만 Chat과 Agent 요청은 키가 있어야 동작합니다. 종료는 PowerShell에서 `Ctrl+C`입니다.
 
+일반 Chat은 workspace 없이 사용할 수 있습니다. Workspace는 Agent가 파일을 읽고 수정할 프로젝트 폴더이며 Agent 모드에서만 필요합니다. 서버/API 오류는 prompt나 API 키를 제외하고 `logs/server.log`에 기록됩니다. `.env`를 변경했다면 실행 중인 서버를 종료한 뒤 다시 시작해야 새 설정이 반영됩니다.
+
+실행한 PowerShell 창에는 시작·접속 로그와 LLM 오류가 바로 표시됩니다. 파일 로그를 별도 창에서 계속 보려면 다음 명령을 사용합니다.
+
+```powershell
+Get-Content .\logs\server.log -Wait
+```
+
 ## Tailscale로 스마트폰에서 접속
 
 PC와 스마트폰을 같은 tailnet에 연결한 뒤 서버를 다음처럼 실행합니다.

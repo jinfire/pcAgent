@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+from logging.handlers import RotatingFileHandler
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
@@ -21,14 +22,32 @@ from app.llm.usage import usage_summary
 from app.storage import AgentDatabase, StorageConflictError
 from app.tools.coding_tools import CodingTools
 
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+LOG_DIR = BASE_DIR.parent / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
+SERVER_LOG_PATH = LOG_DIR / "server.log"
+if not any(
+    isinstance(handler, RotatingFileHandler)
+    and Path(handler.baseFilename) == SERVER_LOG_PATH.resolve()
+    for handler in logger.handlers
+):
+    file_handler = RotatingFileHandler(
+        SERVER_LOG_PATH,
+        maxBytes=1_000_000,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    logger.addHandler(file_handler)
 
 app = FastAPI(title="My Agent", version="0.2.0", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -255,7 +274,11 @@ def chat_endpoint(request: MessageRequest) -> dict[str, str]:
         messages, session_id, settings = _prepare_request(request, "chat")
     except Exception as exc:
         raise _storage_http_error(exc) from exc
-    logger.info("Chat request: %s", _safe_request_summary(request.message))
+    logger.info(
+        "Chat request received (characters=%d, persisted_session=%s)",
+        len(request.message),
+        bool(session_id),
+    )
     try:
         answer = chat(
             messages,
@@ -264,7 +287,7 @@ def chat_endpoint(request: MessageRequest) -> dict[str, str]:
             role="chat",
         )
     except Exception as exc:
-        logger.error("OpenAI chat error (%s): %s", type(exc).__name__, _safe_log_text(str(exc)))
+        logger.error("LLM chat error (%s): %s", type(exc).__name__, _safe_log_text(str(exc)))
         raise HTTPException(status_code=502, detail=_public_error(exc)) from exc
     if session_id:
         get_database().add_message(session_id, "assistant", answer[:20_000])
@@ -277,7 +300,11 @@ async def agent_endpoint(request: MessageRequest) -> StreamingResponse:
         messages, session_id, settings = _prepare_request(request, "agent")
     except Exception as exc:
         raise _storage_http_error(exc) from exc
-    logger.info("Agent request: %s", _safe_request_summary(request.message))
+    logger.info(
+        "Agent request received (characters=%d, persisted_session=%s)",
+        len(request.message),
+        bool(session_id),
+    )
     context = _manager_context(messages)
 
     async def event_stream():
@@ -426,6 +453,16 @@ def _safe_log_text(value: str) -> str:
 
 
 def _public_error(exc: Exception) -> str:
+    error_name = type(exc).__name__
+    status_code = getattr(exc, "status_code", None)
+    if error_name == "AuthenticationError" or status_code in {401, 403}:
+        return "API 키 인증에 실패했습니다. .env를 확인하고 서버를 다시 시작하세요."
+    if error_name == "RateLimitError" or status_code == 429:
+        return "API 요청 한도 또는 사용량 한도에 도달했습니다. 잠시 후 다시 시도하거나 provider의 quota를 확인하세요."
+    if error_name in {"APITimeoutError", "APIConnectionError"}:
+        return "AI API 연결에 실패했습니다. 네트워크 상태를 확인하고 다시 시도하세요."
+    if error_name == "NotFoundError" or status_code == 404:
+        return "설정된 AI 모델을 찾을 수 없습니다. .env의 모델 이름을 확인하세요."
     if isinstance(exc, RuntimeError) and "configured" in str(exc):
         return str(exc)
-    return "요청을 처리하지 못했습니다. 서버 로그를 확인하세요."
+    return "요청을 처리하지 못했습니다. logs/server.log를 확인하세요."

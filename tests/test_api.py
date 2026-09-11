@@ -49,6 +49,17 @@ def test_chat_does_not_require_a_workspace(tmp_path, monkeypatch) -> None:
     assert response.json() == {"answer": "hello"}
 
 
+def test_public_llm_errors_are_actionable() -> None:
+    rate_limit_error = type("RateLimitError", (Exception,), {})()
+    auth_error = type("AuthenticationError", (Exception,), {})()
+    connection_error = type("APIConnectionError", (Exception,), {})()
+
+    assert "사용량 한도" in main._public_error(rate_limit_error)
+    assert "API 키 인증" in main._public_error(auth_error)
+    assert "네트워크" in main._public_error(connection_error)
+    assert "logs/server.log" in main._public_error(Exception("unexpected"))
+
+
 def test_agent_sse_includes_plan_progress(monkeypatch) -> None:
     def fake_prepare(request, mode):
         assert mode == "agent"
