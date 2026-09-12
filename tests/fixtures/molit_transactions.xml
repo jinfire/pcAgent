@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+  <body><items>
+    <item>
+      <dealId>tx-1</dealId><aptNm>테스트센트럴</aptNm><excluUseAr>84.95</excluUseAr>
+      <dealAmount>100,000</dealAmount><dealYear>2026</dealYear><dealMonth>8</dealMonth><dealDay>5</dealDay>
+      <floor>12</floor><buildYear>2015</buildYear><jibun>1-1</jibun>
+    </item>
+    <item>
+      <dealId>tx-2</dealId><aptNm>테스트센트럴</aptNm><excluUseAr>84.95</excluUseAr>
+      <dealAmount>105,000</dealAmount><dealYear>2026</dealYear><dealMonth>8</dealMonth><dealDay>12</dealDay>
+      <floor>18</floor><buildYear>2015</buildYear><jibun>1-1</jibun>
+    </item>
+    <item>
+      <dealId>tx-3</dealId><aptNm>테스트센트럴</aptNm><excluUseAr>84.95</excluUseAr>
+      <dealAmount>103,000</dealAmount><dealYear>2026</dealYear><dealMonth>8</dealMonth><dealDay>20</dealDay>
+      <floor>8</floor><buildYear>2015</buildYear><jibun>1-1</jibun><cdealDay>20260825</cdealDay>
+    </item>
+  </items></body>
+</response>

@@ -10,6 +10,7 @@ from app.agents.general_agent import run_general_agent
 from app.agents.review_agent import run_review_agent
 from app.config import Settings
 from app.llm.openai_client import ProgressCallback, run_tool_loop
+from app.real_estate.service import run_real_estate_agent
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,9 @@ You are the Architect and Manager for a small personal PC software agent. Unders
 delegate work, and own the final answer. For local repository/file/command work, call the Coding Agent. Its work is
 automatically checked by an independent Review Agent. Call the Web Reader only when the user provides a specific
 public HTTP(S) URL that must be read; it is not a search engine. You may answer simple knowledge questions directly.
+Route Korean real-estate market, apartment comparison, buy/sell scenario, and policy-impact questions to the
+Korea Real Estate Analyst. It uses stored official evidence and deterministic calculations; do not send these tasks
+to the Coding Agent. Ask the tool for only an implemented MVP mode.
 
 Use the Senior Adjudicator only when you are genuinely unsure about an important architecture decision, or when the
 worker and reviewer reach materially different conclusions. Do not use it for ordinary defects or routine validation.
@@ -28,6 +32,26 @@ including inspection, implementation, tests, and review when relevant.
 """.strip()
 
 MANAGER_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "name": "run_real_estate_analyst",
+        "description": "Analyze Korean real-estate market, apartment comparison, buy/sell scenarios, or policy impact using stored official evidence.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string"},
+                "analysis_mode": {
+                    "type": "string",
+                    "enum": ["market_trend", "apartment_comparison", "buy_or_sell_scenario", "policy_analysis"],
+                },
+                "region": {"type": "string"},
+                "comparison_regions": {"type": "array", "items": {"type": "string"}, "maxItems": 10},
+            },
+            "required": ["task", "analysis_mode", "region", "comparison_regions"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
     {
         "type": "function",
         "name": "run_coding_agent",
@@ -91,6 +115,16 @@ def run_manager(user_input: str, settings: Settings, on_progress: ProgressCallba
                 on_progress,
                 plan=[str(item) for item in plan] if isinstance(plan, list) else None,
             )
+        if name == "run_real_estate_analyst":
+            _selected(on_progress, "Korea Real Estate Analyst")
+            return run_real_estate_agent(
+                str(arguments["task"]),
+                str(arguments["analysis_mode"]),
+                str(arguments["region"]),
+                [str(item) for item in arguments.get("comparison_regions") or []],
+                settings,
+                on_progress,
+            )
         if name == "run_web_reader":
             _selected(on_progress, "Web Reader")
             result = run_general_agent(str(arguments["task"]), settings, on_progress)
@@ -107,7 +141,10 @@ def run_manager(user_input: str, settings: Settings, on_progress: ProgressCallba
 
     def manager_progress(event: dict[str, Any]) -> None:
         if event.get("type") == "tool" and event.get("name") in {
-            "run_coding_agent", "run_web_reader", "run_senior_adjudicator"
+            "run_coding_agent",
+            "run_web_reader",
+            "run_senior_adjudicator",
+            "run_real_estate_analyst",
         }:
             return
         if on_progress:

@@ -26,9 +26,84 @@
       <nav class="mode-tabs" aria-label="대화 모드">
         <button type="button" class="mode-tab active" data-mode="chat" aria-selected="true">Chat</button>
         <button type="button" class="mode-tab" data-mode="agent" aria-selected="false">Agent</button>
+        <button type="button" class="mode-tab" data-mode="real-estate" aria-selected="false">Real Estate</button>
       </nav>
       <section class="mode-note" id="mode-note"></section>
       <section id="messages" class="messages" aria-live="polite" aria-label="대화 내용"></section>
+    </section>
+
+    <section class="view" data-view="real-estate" aria-label="Korea Real Estate Analyst">
+      <div class="section-heading estate-heading">
+        <div><p class="eyebrow">EVIDENCE-FIRST</p><h2>Korea Real Estate Analyst</h2></div>
+        <span class="trust-badge">공식 자료 우선</span>
+      </div>
+      <nav class="estate-tabs" aria-label="부동산 화면">
+        <button type="button" class="active" data-estate-tab="analysis">Analysis</button>
+        <button type="button" data-estate-tab="watchlists">Watchlist</button>
+        <button type="button" data-estate-tab="sources">Sources / Jobs</button>
+      </nav>
+
+      <section class="estate-pane active" data-estate-pane="analysis">
+        <form id="estate-analysis-form" class="card estate-form">
+          <label>분석 모드
+            <select id="estate-mode" required>
+              <option value="market_trend">시장 흐름</option>
+              <option value="apartment_comparison">아파트 비교</option>
+              <option value="buy_or_sell_scenario">보유·매도 시나리오</option>
+              <option value="policy_analysis">정책 영향</option>
+            </select>
+          </label>
+          <label>Watchlist<select id="estate-watchlist"><option value="">직접 입력</option></select></label>
+          <label>지역<input id="estate-region" maxlength="100" required placeholder="예: 동탄"></label>
+          <label>비교 지역<input id="estate-comparisons" maxlength="500" placeholder="분당, 광교 (쉼표 구분)"></label>
+          <div class="estate-period">
+            <label>시작 월<input id="estate-period-start" type="month"></label>
+            <label>종료 월<input id="estate-period-end" type="month"></label>
+          </div>
+          <label>질문<textarea id="estate-question" rows="4" maxlength="10000" required placeholder="서울의 상승 흐름이 동탄까지 전달되고 있는지 근거와 반대 근거를 함께 분석해줘"></textarea></label>
+          <button id="estate-analyze" type="submit" class="primary">근거 기반 분석</button>
+          <p class="form-note">가격을 확정적으로 예측하지 않습니다. 세금·대출·법률 판단은 최신 공식 근거와 상위 검증이 필요합니다.</p>
+        </form>
+        <section id="estate-progress" class="card estate-progress empty-card">분석을 시작하면 진행 상황이 표시됩니다.</section>
+        <section id="estate-report" class="estate-report"></section>
+      </section>
+
+      <section class="estate-pane" data-estate-pane="watchlists">
+        <form id="watchlist-form" class="card estate-form">
+          <input id="watchlist-id" type="hidden">
+          <label>이름<input id="watchlist-name" maxlength="100" required placeholder="동탄 관찰"></label>
+          <label>관심 지역<input id="watchlist-regions" maxlength="1000" required placeholder="동탄 (쉼표 구분)"></label>
+          <label>비교 지역<input id="watchlist-comparisons" maxlength="1000" placeholder="서울, 과천, 분당"></label>
+          <label>단지<input id="watchlist-complexes" maxlength="1000" placeholder="단지명 (쉼표 구분)"></label>
+          <label>법정동 코드
+            <input id="watchlist-district-codes" maxlength="1000" placeholder="동탄=41590, 분당=41135">
+          </label>
+          <div class="form-actions"><button type="submit" class="primary">저장</button><button id="watchlist-reset" type="button">새로 작성</button></div>
+          <p class="form-note">예시는 초기값으로 고정되지 않습니다. 법정동 코드는 국토부 수집에 사용됩니다.</p>
+        </form>
+        <div id="watchlist-list" class="card-list estate-list"></div>
+      </section>
+
+      <section class="estate-pane" data-estate-pane="sources">
+        <div class="section-heading row-heading"><h3>Official Sources</h3><button id="refresh-sources" type="button">새로고침</button></div>
+        <div id="estate-source-list" class="card-list estate-list"></div>
+        <form id="estate-job-form" class="card estate-form">
+          <h3>수동 데이터 수집</h3>
+          <label>Source<select id="estate-job-source" required></select></label>
+          <label>지역<input id="estate-job-region" maxlength="100" required placeholder="동탄"></label>
+          <label>법정동 코드<input id="estate-job-district-code" maxlength="20" placeholder="41590"></label>
+          <label>R-ONE 통계표 ID<input id="estate-job-statbl-id" maxlength="80" placeholder="R-ONE source에서 필요"></label>
+          <label>공식 문서 URL<input id="estate-job-url" type="url" maxlength="2000" placeholder="정책 source에서만 사용"></label>
+          <div class="estate-period">
+            <label>시작 월<input id="estate-job-start" type="month" required></label>
+            <label>종료 월<input id="estate-job-end" type="month" required></label>
+          </div>
+          <button type="submit" class="primary">수집 작업 등록</button>
+          <p class="form-note">API Key는 브라우저로 전달하지 않습니다. 공식 도메인과 서버 환경변수만 사용합니다.</p>
+        </form>
+        <div class="section-heading row-heading"><h3>Ingestion Jobs</h3><button id="refresh-jobs" type="button">새로고침</button></div>
+        <div id="estate-job-list" class="card-list estate-list"></div>
+      </section>
     </section>
 
     <section class="view" data-view="projects" aria-label="Projects">
@@ -99,6 +174,7 @@
   <nav class="bottom-nav" aria-label="주요 화면">
     <button type="button" data-target="chat" class="active"><span>⌁</span>Chat</button>
     <button type="button" data-target="projects"><span>▦</span>Projects</button>
+    <button type="button" data-target="real-estate"><span>⌂</span>Estate</button>
     <button type="button" data-target="running"><span>◌</span>Running</button>
     <button type="button" data-target="review"><span>✓</span>Review</button>
     <button type="button" data-target="usage"><span>◔</span>Usage</button>
