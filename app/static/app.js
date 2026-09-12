@@ -9,6 +9,7 @@ const state = {
   busy: false,
   latestReview: readJson("my-agent-latest-review", null),
   gitFileCount: 0,
+  estate: { watchlists: [], sources: [], jobs: [], busy: false },
 };
 
 const messages = document.querySelector("#messages");
@@ -47,9 +48,19 @@ document.querySelector("#refresh-git").addEventListener("click", refreshGit);
 document.querySelector("#commit-form").addEventListener("submit", commitChanges);
 document.querySelector("#rename-workspace").addEventListener("click", renameWorkspace);
 document.querySelector("#delete-workspace").addEventListener("click", deleteWorkspace);
+document.querySelectorAll("[data-estate-tab]").forEach((button) => {
+  button.addEventListener("click", () => switchEstatePane(button.dataset.estateTab));
+});
+document.querySelector("#estate-analysis-form").addEventListener("submit", submitEstateAnalysis);
+document.querySelector("#estate-watchlist").addEventListener("change", applySelectedWatchlist);
+document.querySelector("#watchlist-form").addEventListener("submit", saveWatchlist);
+document.querySelector("#watchlist-reset").addEventListener("click", resetWatchlistForm);
+document.querySelector("#estate-job-form").addEventListener("submit", createEstateJob);
+document.querySelector("#refresh-sources").addEventListener("click", loadEstateSources);
+document.querySelector("#refresh-jobs").addEventListener("click", loadEstateJobs);
 
 function switchView(view) {
-  const allowed = ["chat", "projects", "running", "review", "usage"];
+  const allowed = ["chat", "projects", "real-estate", "running", "review", "usage"];
   if (!allowed.includes(view)) view = "chat";
   state.view = view;
   sessionStorage.setItem("my-agent-view", view);
@@ -64,10 +75,15 @@ function switchView(view) {
     document.querySelector('.bottom-nav [data-target="review"]').classList.remove("has-update");
   }
   if (view === "projects") refreshGit();
+  if (view === "real-estate") loadEstateDashboard();
   if (view === "usage") checkUsage();
 }
 
 function switchMode(mode) {
+  if (mode === "real-estate") {
+    switchView("real-estate");
+    return;
+  }
   if (state.busy || !["chat", "agent"].includes(mode)) return;
   state.mode = mode;
   sessionStorage.setItem("my-agent-mode", mode);
@@ -724,8 +740,367 @@ function showError(message) {
   window.alert(`오류: ${message}`);
 }
 
+function switchEstatePane(name) {
+  const allowed = ["analysis", "watchlists", "sources"];
+  const selected = allowed.includes(name) ? name : "analysis";
+  document.querySelectorAll("[data-estate-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.estateTab === selected);
+  });
+  document.querySelectorAll("[data-estate-pane]").forEach((pane) => {
+    pane.classList.toggle("active", pane.dataset.estatePane === selected);
+  });
+  if (selected === "sources") Promise.all([loadEstateSources(), loadEstateJobs()]).catch((error) => showError(error.message));
+}
+
+async function loadEstateDashboard() {
+  try {
+    await Promise.all([loadEstateWatchlists(), loadEstateSources(), loadEstateJobs()]);
+    const selected = document.querySelector("#estate-watchlist").value;
+    const query = selected ? `?watchlist_id=${encodeURIComponent(selected)}` : "";
+    const latest = await requestJson(`/api/real-estate/reports/latest${query}`);
+    if (latest?.report) renderEstateReport(latest.report);
+  } catch (error) {
+    document.querySelector("#estate-progress").textContent = `데이터를 불러오지 못했습니다: ${error.message}`;
+  }
+}
+
+async function loadEstateWatchlists() {
+  state.estate.watchlists = await requestJson("/api/real-estate/watchlists");
+  const picker = document.querySelector("#estate-watchlist");
+  const selected = picker.value;
+  picker.replaceChildren(element("option", { value: "" }, "직접 입력"));
+  state.estate.watchlists.forEach((item) => picker.append(element("option", { value: item.id }, item.name)));
+  if (state.estate.watchlists.some((item) => item.id === selected)) picker.value = selected;
+  renderWatchlists();
+}
+
+function renderWatchlists() {
+  const list = document.querySelector("#watchlist-list");
+  list.replaceChildren();
+  if (!state.estate.watchlists.length) {
+    list.append(element("p", { className: "empty-inline" }, "등록된 watchlist가 없습니다."));
+    return;
+  }
+  state.estate.watchlists.forEach((item) => {
+    const edit = element("button", { type: "button" }, "수정");
+    edit.addEventListener("click", () => editWatchlist(item));
+    const use = element("button", { type: "button" }, "분석에 사용");
+    use.addEventListener("click", () => {
+      document.querySelector("#estate-watchlist").value = item.id;
+      applySelectedWatchlist();
+      switchEstatePane("analysis");
+    });
+    const remove = element("button", { type: "button", className: "danger-link" }, "삭제");
+    remove.addEventListener("click", () => deleteWatchlist(item));
+    list.append(element("article", { className: "card" },
+      element("h3", {}, item.name),
+      element("div", { className: "source-meta" },
+        element("span", {}, `지역 ${joinOrDash(item.regions)}`),
+        element("span", {}, `비교 ${joinOrDash(item.comparison_regions)}`),
+        element("span", {}, `단지 ${joinOrDash(item.complexes)}`),
+      ),
+      element("div", { className: "card-actions" }, use, edit, remove),
+    ));
+  });
+}
+
+function applySelectedWatchlist() {
+  const item = state.estate.watchlists.find((watchlist) => watchlist.id === document.querySelector("#estate-watchlist").value);
+  if (!item) return;
+  document.querySelector("#estate-region").value = item.regions?.[0] || "";
+  document.querySelector("#estate-comparisons").value = (item.comparison_regions || []).join(", ");
+}
+
+function editWatchlist(item) {
+  document.querySelector("#watchlist-id").value = item.id;
+  document.querySelector("#watchlist-name").value = item.name;
+  document.querySelector("#watchlist-regions").value = (item.regions || []).join(", ");
+  document.querySelector("#watchlist-comparisons").value = (item.comparison_regions || []).join(", ");
+  document.querySelector("#watchlist-complexes").value = (item.complexes || []).join(", ");
+  document.querySelector("#watchlist-district-codes").value = Object.entries(item.district_codes || {}).map(([name, code]) => `${name}=${code}`).join(", ");
+  switchEstatePane("watchlists");
+  document.querySelector("#watchlist-name").focus();
+}
+
+function resetWatchlistForm() {
+  document.querySelector("#watchlist-form").reset();
+  document.querySelector("#watchlist-id").value = "";
+}
+
+async function saveWatchlist(event) {
+  event.preventDefault();
+  const id = document.querySelector("#watchlist-id").value;
+  const payload = {
+    name: document.querySelector("#watchlist-name").value.trim(),
+    regions: commaList(document.querySelector("#watchlist-regions").value),
+    comparison_regions: commaList(document.querySelector("#watchlist-comparisons").value),
+    complexes: commaList(document.querySelector("#watchlist-complexes").value),
+    property_types: ["apartment"],
+    district_codes: districtCodes(document.querySelector("#watchlist-district-codes").value),
+    profile: {},
+  };
+  try {
+    await requestJson(id ? `/api/real-estate/watchlists/${encodeURIComponent(id)}` : "/api/real-estate/watchlists", {
+      method: id ? "PATCH" : "POST",
+      body: JSON.stringify(payload),
+    });
+    resetWatchlistForm();
+    await loadEstateWatchlists();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function deleteWatchlist(item) {
+  if (!window.confirm(`"${item.name}" watchlist를 삭제할까요?`)) return;
+  try {
+    await requestJson(`/api/real-estate/watchlists/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+    await loadEstateWatchlists();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function loadEstateSources() {
+  state.estate.sources = await requestJson("/api/real-estate/sources");
+  const list = document.querySelector("#estate-source-list");
+  const picker = document.querySelector("#estate-job-source");
+  const selected = picker.value;
+  list.replaceChildren();
+  picker.replaceChildren();
+  state.estate.sources.forEach((item) => {
+    picker.append(element("option", { value: item.id }, item.name));
+    const status = item.status || "error";
+    list.append(element("article", { className: "card" },
+      element("div", { className: "review-head" }, element("h3", {}, item.name), element("span", { className: `source-status ${status}` }, status)),
+      element("div", { className: "source-meta" },
+        element("span", {}, `신뢰도 ${item.reliability_level}`),
+        element("span", {}, `최근 성공 ${item.last_success_at ? formatTime(item.last_success_at) : "없음"}`),
+        item.configuration_env ? element("span", {}, `설정: ${item.configuration_env}`) : null,
+      ),
+      item.last_error ? element("p", { className: "source-error" }, item.last_error) : null,
+    ));
+  });
+  if (state.estate.sources.some((item) => item.id === selected)) picker.value = selected;
+}
+
+async function createEstateJob(event) {
+  event.preventDefault();
+  const sourceId = document.querySelector("#estate-job-source").value;
+  const sourceUrl = document.querySelector("#estate-job-url").value.trim();
+  const statblId = document.querySelector("#estate-job-statbl-id").value.trim();
+  const payload = {
+    source_id: sourceId,
+    period_start: document.querySelector("#estate-job-start").value,
+    period_end: document.querySelector("#estate-job-end").value,
+    region: document.querySelector("#estate-job-region").value.trim(),
+    district_code: document.querySelector("#estate-job-district-code").value.trim() || null,
+    source_url: sourceUrl || null,
+    parameters: statblId ? { statbl_id: statblId, cycle: "MM" } : {},
+  };
+  try {
+    await requestJson("/api/real-estate/jobs", { method: "POST", body: JSON.stringify(payload) });
+    await loadEstateJobs();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function loadEstateJobs() {
+  state.estate.jobs = await requestJson("/api/real-estate/jobs");
+  const list = document.querySelector("#estate-job-list");
+  list.replaceChildren();
+  if (!state.estate.jobs.length) {
+    list.append(element("p", { className: "empty-inline" }, "수집 작업이 없습니다."));
+    return;
+  }
+  state.estate.jobs.slice(0, 30).forEach((job) => {
+    list.append(element("article", { className: "card" },
+      element("div", { className: "review-head" },
+        element("h3", {}, state.estate.sources.find((source) => source.id === job.source_id)?.name || job.source_id),
+        element("span", { className: `source-status ${job.status}` }, job.status),
+      ),
+      element("div", { className: "source-meta" },
+        element("span", {}, job.region),
+        element("span", {}, `${job.period_start} ~ ${job.period_end}`),
+        element("span", {}, `시도 ${job.attempts}/${job.max_attempts}`),
+      ),
+      job.last_error ? element("p", { className: "source-error" }, job.last_error) : null,
+    ));
+  });
+}
+
+async function submitEstateAnalysis(event) {
+  event.preventDefault();
+  if (state.estate.busy) return;
+  state.estate.busy = true;
+  const button = document.querySelector("#estate-analyze");
+  button.disabled = true;
+  const progress = document.querySelector("#estate-progress");
+  progress.replaceChildren(element("p", { className: "running" }, "분석 요청을 준비하고 있습니다…"));
+  document.querySelector("#estate-report").replaceChildren();
+  try {
+    const response = await fetch("/api/real-estate/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: document.querySelector("#estate-question").value.trim(),
+        analysis_mode: document.querySelector("#estate-mode").value,
+        region: document.querySelector("#estate-region").value.trim(),
+        comparison_regions: commaList(document.querySelector("#estate-comparisons").value),
+        period_start: document.querySelector("#estate-period-start").value || null,
+        period_end: document.querySelector("#estate-period-end").value || null,
+        watchlist_id: document.querySelector("#estate-watchlist").value || null,
+      }),
+    });
+    if (!response.ok || !response.body) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || "분석 연결에 실패했습니다.");
+    }
+    await readEstateStream(response, progress);
+  } catch (error) {
+    progress.append(element("p", { className: "source-error" }, error.message));
+  } finally {
+    state.estate.busy = false;
+    button.disabled = false;
+  }
+}
+
+async function readEstateStream(response, progress) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalReceived = false;
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const blocks = buffer.split("\n\n");
+    buffer = blocks.pop() || "";
+    for (const block of blocks) {
+      const line = block.split("\n").find((item) => item.startsWith("data: "));
+      if (!line) continue;
+      const event = JSON.parse(line.slice(6));
+      if (event.type === "real_estate_progress") {
+        progress.append(element("p", { className: "done" }, `✓ ${event.message}`));
+      } else if (event.type === "real_estate_final") {
+        finalReceived = true;
+        renderEstateReport(event.result.report);
+      } else if (event.type === "error") {
+        throw new Error(event.message || "분석에 실패했습니다.");
+      }
+    }
+    if (done) break;
+  }
+  if (!finalReceived) throw new Error("분석 응답이 예기치 않게 종료되었습니다.");
+}
+
+function renderEstateReport(report) {
+  const root = document.querySelector("#estate-report");
+  const primary = report.metrics?.primary || {};
+  const latest = primary.latest || {};
+  root.replaceChildren(
+    element("article", { className: "card estate-conclusion" },
+      element("span", { className: `source-status ${report.data_status === "ready" ? "ready" : "warning"}` }, report.data_status || "unknown"),
+      element("strong", {}, report.one_line_conclusion || "결론을 생성할 근거가 부족합니다."),
+      element("div", { className: "estate-meta" }, element("span", {}, `데이터 기준일 ${report.as_of_date || "미확인"}`), element("span", {}, `지역 ${report.region || "-"}`)),
+    ),
+    estateMetrics(latest, primary),
+    estateListCard("확인된 사실", report.confirmed_facts, "fact"),
+    estateListCard("사실로부터의 추론", report.inferences, "inference"),
+    estateListCard("상승 근거", report.upside_reasons, "upside"),
+    estateListCard("하락·반대 근거", report.downside_reasons, "downside"),
+    estateScenarioCard(report.scenarios),
+    estateListCard("판단을 바꿀 핵심 지표", report.key_indicators, "indicator"),
+    estateListCard("부족하거나 확인되지 않은 정보", report.missing_information, "missing"),
+    estateSourcesCard(report.sources),
+  );
+}
+
+function estateMetrics(latest, primary) {
+  const values = [
+    ["표본", latest.sample_count ?? primary.sample_count ?? "-"],
+    ["3개월 중앙값/㎡", latest.rolling_3m_median_price_per_sqm_krw ? `${number(latest.rolling_3m_median_price_per_sqm_krw)}원` : "-"],
+    ["거래량 전월비", percent(latest.volume_mom_pct)],
+    ["6개월 변화", percent(latest.price_change_6m_pct)],
+  ];
+  return element("article", { className: "card" }, element("h3", {}, "주요 지표"), element("div", { className: "indicator-grid usage-grid" }, ...values.map(([label, value]) => metric(label, value))));
+}
+
+function estateListCard(title, items, label) {
+  const safeItems = Array.isArray(items) ? items : [];
+  return element("article", { className: "card" }, element("h3", {}, title), safeItems.length
+    ? element("ul", { className: "estate-card-list" }, ...safeItems.map((item) => element("li", {}, element("span", { className: "claim-label" }, label), " ", String(item))))
+    : element("p", { className: "empty-inline" }, "확인된 항목이 없습니다."));
+}
+
+function estateScenarioCard(items) {
+  const scenarios = Array.isArray(items) ? items : [];
+  return element("article", { className: "card" }, element("h3", {}, "조건별 시나리오"), element("div", { className: "scenario-grid" },
+    ...scenarios.map((item) => element("section", { className: `scenario ${item.name || "base"}` },
+      element("strong", {}, ({ bull: "강세", base: "기준", bear: "약세" })[item.name] || item.name || "시나리오"),
+      element("p", {}, item.description || ""),
+      element("p", {}, `조건: ${joinOrDash(item.conditions)}`),
+    )),
+  ));
+}
+
+function estateSourcesCard(items) {
+  const sources = Array.isArray(items) ? items : [];
+  const links = sources.map((item) => {
+    const url = safeHttpUrl(item.url);
+    const node = element(url ? "a" : "div", { className: "report-source" }, element("strong", {}, item.name || item.source_id), element("span", {}, `신뢰도 ${item.reliability_level || "-"} · ${item.as_of_date || "기준일 미확인"}`));
+    if (url) {
+      node.href = url;
+      node.target = "_blank";
+      node.rel = "noopener noreferrer";
+    }
+    return node;
+  });
+  return element("article", { className: "card" }, element("h3", {}, "출처"), ...links, sources.length ? null : element("p", { className: "empty-inline" }, "표시할 공식 출처가 없습니다."));
+}
+
+function commaList(value) {
+  return [...new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean))];
+}
+
+function districtCodes(value) {
+  const result = {};
+  commaList(value).forEach((item) => {
+    const [name, code] = item.split("=").map((part) => part.trim());
+    if (name && /^\d{5}$/.test(code || "")) result[name] = code;
+  });
+  return result;
+}
+
+function joinOrDash(items) {
+  return Array.isArray(items) && items.length ? items.join(", ") : "-";
+}
+
+function percent(value) {
+  return value !== null && value !== undefined && Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}%` : "-";
+}
+
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function setDefaultEstateDates() {
+  const now = new Date();
+  const end = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const startDate = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+  const start = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`;
+  ["#estate-period-end", "#estate-job-end"].forEach((selector) => { document.querySelector(selector).value = end; });
+  ["#estate-period-start", "#estate-job-start"].forEach((selector) => { document.querySelector(selector).value = start; });
+}
+
 switchMode(state.mode);
 switchView(state.view);
 renderReview();
+setDefaultEstateDates();
 Promise.all([loadWorkspaces(), checkHealth(), checkUsage()]).catch((error) => showError(error.message));
 input.focus();

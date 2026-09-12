@@ -1,0 +1,6 @@
+{
+  "SttsApiTblData": [
+    {"CLS_NM": "동탄", "WRTTIME_IDTFR_ID": "2026-07", "ITM_NM": "아파트 매매가격지수", "DTA_VAL": "101.2", "UNIT_NM": "index"},
+    {"CLS_NM": "동탄", "WRTTIME_IDTFR_ID": "2026-08", "ITM_NM": "아파트 매매가격지수", "DTA_VAL": "101.8", "UNIT_NM": "index"}
+  ]
+}

@@ -4,11 +4,12 @@ import asyncio
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -19,6 +20,7 @@ from app.agents.manager import run_manager
 from app.config import get_settings
 from app.llm.openai_client import chat
 from app.llm.usage import usage_summary
+from app.real_estate.service import get_real_estate_service
 from app.storage import AgentDatabase, StorageConflictError
 from app.tools.coding_tools import CodingTools
 
@@ -49,7 +51,23 @@ if not any(
     )
     logger.addHandler(file_handler)
 
-app = FastAPI(title="My Agent", version="0.2.0", docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    service = get_real_estate_service()
+    service.start()
+    try:
+        yield
+    finally:
+        service.stop()
+
+
+app = FastAPI(
+    title="My Agent",
+    version="0.2.0",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=lifespan,
+)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -98,6 +116,41 @@ class CommitRequest(BaseModel):
     confirmed: Literal[True]
 
 
+class RealEstateWatchlistRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    regions: list[str] = Field(default_factory=list, max_length=50)
+    complexes: list[str] = Field(default_factory=list, max_length=50)
+    comparison_regions: list[str] = Field(default_factory=list, max_length=50)
+    property_types: list[str] = Field(default_factory=lambda: ["apartment"], max_length=20)
+    district_codes: dict[str, str] = Field(default_factory=dict)
+    profile: dict[str, Any] = Field(default_factory=dict)
+
+
+class RealEstateJobRequest(BaseModel):
+    source_id: str = Field(min_length=1, max_length=100)
+    period_start: str = Field(min_length=4, max_length=20)
+    period_end: str = Field(min_length=4, max_length=20)
+    region: str = Field(min_length=1, max_length=100)
+    district_code: str | None = Field(default=None, max_length=20)
+    source_url: str | None = Field(default=None, max_length=2_000)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class RealEstateAnalysisRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=10_000)
+    analysis_mode: Literal[
+        "market_trend",
+        "apartment_comparison",
+        "buy_or_sell_scenario",
+        "policy_analysis",
+    ]
+    region: str = Field(min_length=1, max_length=100)
+    comparison_regions: list[str] = Field(default_factory=list, max_length=10)
+    period_start: str | None = Field(default=None, max_length=20)
+    period_end: str | None = Field(default=None, max_length=20)
+    watchlist_id: str | None = Field(default=None, max_length=64)
+
+
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -133,6 +186,156 @@ def health() -> dict[str, object]:
 @app.get("/api/usage")
 def usage() -> dict[str, object]:
     return usage_summary(get_settings().usage_log_path)
+
+
+@app.get("/api/real-estate/capabilities")
+def real_estate_capabilities() -> dict[str, Any]:
+    return get_real_estate_service().capabilities()
+
+
+@app.get("/api/real-estate/sources")
+def real_estate_sources() -> list[dict[str, Any]]:
+    return get_real_estate_service().repository.list_sources()
+
+
+@app.get("/api/real-estate/watchlists")
+def list_real_estate_watchlists() -> list[dict[str, Any]]:
+    return get_real_estate_service().repository.list_watchlists()
+
+
+@app.post("/api/real-estate/watchlists", status_code=201)
+def create_real_estate_watchlist(request: RealEstateWatchlistRequest) -> dict[str, Any]:
+    try:
+        return get_real_estate_service().repository.create_watchlist(request.model_dump())
+    except Exception as exc:
+        raise _storage_http_error(exc) from exc
+
+
+@app.patch("/api/real-estate/watchlists/{watchlist_id}")
+def update_real_estate_watchlist(
+    watchlist_id: str, request: RealEstateWatchlistRequest
+) -> dict[str, Any]:
+    try:
+        return get_real_estate_service().repository.update_watchlist(
+            watchlist_id, request.model_dump()
+        )
+    except Exception as exc:
+        raise _storage_http_error(exc) from exc
+
+
+@app.delete("/api/real-estate/watchlists/{watchlist_id}", status_code=204)
+def delete_real_estate_watchlist(watchlist_id: str) -> None:
+    try:
+        get_real_estate_service().repository.delete_watchlist(watchlist_id)
+    except Exception as exc:
+        raise _storage_http_error(exc) from exc
+
+
+@app.post("/api/real-estate/jobs", status_code=202)
+def create_real_estate_job(request: RealEstateJobRequest) -> dict[str, Any]:
+    payload = request.model_dump()
+    _validate_collection_parameters(payload["parameters"])
+    try:
+        return get_real_estate_service().enqueue(payload)
+    except Exception as exc:
+        raise _storage_http_error(exc) from exc
+
+
+@app.get("/api/real-estate/jobs")
+def list_real_estate_jobs() -> list[dict[str, Any]]:
+    return get_real_estate_service().repository.list_jobs()
+
+
+@app.get("/api/real-estate/jobs/{job_id}")
+def get_real_estate_job(job_id: str) -> dict[str, Any]:
+    try:
+        return get_real_estate_service().repository.get_job(job_id)
+    except Exception as exc:
+        raise _storage_http_error(exc) from exc
+
+
+@app.get("/api/real-estate/policies")
+def list_real_estate_policies(
+    region: str | None = Query(default=None, max_length=100),
+) -> list[dict[str, Any]]:
+    return get_real_estate_service().repository.list_policies(region=region)
+
+
+@app.get("/api/real-estate/evidence/{item_id}")
+def get_real_estate_evidence(item_id: int) -> dict[str, Any]:
+    try:
+        item = get_real_estate_service().repository.get_source_item(item_id)
+        item.pop("raw_payload", None)
+        return item
+    except Exception as exc:
+        raise _storage_http_error(exc) from exc
+
+
+@app.get("/api/real-estate/reports/latest")
+def get_latest_real_estate_report(
+    watchlist_id: str | None = Query(default=None, max_length=64),
+) -> dict[str, Any] | None:
+    return get_real_estate_service().repository.latest_report(watchlist_id)
+
+
+@app.get("/api/real-estate/reports/{report_id}")
+def get_real_estate_report(report_id: str) -> dict[str, Any]:
+    try:
+        return get_real_estate_service().repository.get_report(report_id)
+    except Exception as exc:
+        raise _storage_http_error(exc) from exc
+
+
+@app.post("/api/real-estate/analyze")
+async def analyze_real_estate_endpoint(
+    request: RealEstateAnalysisRequest,
+) -> StreamingResponse:
+    async def event_stream():
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def progress(event: dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+
+        def work() -> None:
+            try:
+                result = get_real_estate_service().analyze(
+                    question=request.question,
+                    analysis_mode=request.analysis_mode,
+                    region=request.region,
+                    comparison_regions=request.comparison_regions,
+                    period_start=request.period_start,
+                    period_end=request.period_end,
+                    watchlist_id=request.watchlist_id,
+                    on_progress=progress,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Real estate analysis error (%s): %s",
+                    type(exc).__name__,
+                    _safe_log_text(str(exc)),
+                )
+                progress({"type": "error", "message": _public_error(exc)})
+            else:
+                progress({"type": "real_estate_final", "result": result})
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        task = asyncio.create_task(asyncio.to_thread(work))
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        finally:
+            await task
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/workspaces")
@@ -466,3 +669,15 @@ def _public_error(exc: Exception) -> str:
     if isinstance(exc, RuntimeError) and "configured" in str(exc):
         return str(exc)
     return "요청을 처리하지 못했습니다. logs/server.log를 확인하세요."
+
+
+def _validate_collection_parameters(parameters: dict[str, Any]) -> None:
+    encoded = json.dumps(parameters, ensure_ascii=False)
+    if len(encoded) > 10_000:
+        raise HTTPException(status_code=422, detail="Collection parameters are too large")
+    sensitive = re.compile(r"(?i)(api.?key|service.?key|secret|token|password|credential)")
+    if any(sensitive.search(str(key)) for key in parameters):
+        raise HTTPException(
+            status_code=422,
+            detail="API keys must be configured on the server, not sent in job parameters",
+        )

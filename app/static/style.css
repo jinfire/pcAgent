@@ -76,7 +76,7 @@ h3 { margin: 0; font-size: 17px; }
 
 .mode-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 5px;
   padding: 5px;
   border: 1px solid var(--line);
@@ -108,8 +108,8 @@ h3 { margin: 0; font-size: 17px; }
 .card { padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 7px 24px rgba(46,45,39,.04); }
 .compact-form { display: grid; gap: 11px; }
 .compact-form label, .commit-form label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 800; }
-input { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--ink); background: #fff; }
-input:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(36,92,70,.1); }
+input, select { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--ink); background: #fff; }
+input:focus, textarea:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(36,92,70,.1); }
 .primary, .danger { min-height: 42px; border: 0; border-radius: 10px; color: #fff; font-weight: 800; }
 .primary { background: var(--green); }
 .danger { background: var(--red); }
@@ -182,6 +182,47 @@ input:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px 
 .severity-low .severity { color: var(--green); background: var(--green-soft); }
 .empty-card { color: var(--muted); font-size: 13px; }
 
+.estate-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.trust-badge { flex: 0 0 auto; padding: 6px 8px; border-radius: 999px; color: var(--green); background: var(--green-soft); font-size: 10px; font-weight: 850; }
+.estate-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.45); }
+.estate-tabs button { min-height: 38px; padding: 5px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 800; }
+.estate-tabs button.active { color: #fff; background: var(--green); }
+.estate-pane { display: none; }
+.estate-pane.active { display: block; }
+.estate-form { display: grid; gap: 11px; }
+.estate-form > label, .estate-period label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 800; }
+.estate-form textarea { width: 100%; min-height: 92px; padding: 10px 11px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--ink); background: #fff; line-height: 1.5; }
+.estate-period, .form-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.form-actions button { min-height: 42px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-weight: 800; }
+.form-actions .primary { border: 0; background: var(--green); }
+.estate-progress { display: grid; gap: 7px; margin-top: 10px; }
+.estate-progress p { margin: 0; font-size: 12px; }
+.estate-progress .running { color: var(--orange); }
+.estate-progress .done { color: var(--green); }
+.estate-report { display: grid; gap: 10px; margin-top: 10px; }
+.estate-report > .card { display: grid; gap: 10px; }
+.estate-report h3, .estate-list h3 { font-size: 14px; }
+.estate-conclusion { border-color: #b7cbbb; background: var(--green-soft); }
+.estate-conclusion strong { font: 500 21px/1.35 Georgia, serif; }
+.estate-meta, .source-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; color: var(--muted); font-size: 10px; }
+.estate-card-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.estate-card-list li { padding: 9px 10px; border-radius: 8px; background: #faf8f2; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.claim-label, .source-status { display: inline-flex; width: fit-content; padding: 3px 6px; border-radius: 999px; color: var(--green); background: var(--green-soft); font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.source-status.configuration_required, .source-status.warning, .source-status.retry { color: var(--yellow); background: #f3e8c9; }
+.source-status.error, .source-status.failed, .source-status.temporarily_unavailable { color: var(--red); background: #f7dddd; }
+.scenario-grid, .indicator-grid { display: grid; gap: 8px; }
+.scenario { padding: 11px; border-left: 4px solid var(--line); border-radius: 8px; background: #faf8f2; }
+.scenario.bull { border-left-color: var(--green); }
+.scenario.bear { border-left-color: var(--red); }
+.scenario p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.estate-list { margin-top: 10px; }
+.estate-list .card { display: grid; gap: 8px; }
+.estate-list .card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.estate-list button, .estate-list a { min-height: 34px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: #fff; font-size: 11px; text-decoration: none; }
+.source-error { margin: 0; color: var(--red); font-size: 11px; overflow-wrap: anywhere; }
+.report-source { display: grid; gap: 4px; padding: 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; }
+.report-source span { color: var(--muted); font-size: 10px; }
+
 .usage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .metric { display: grid; gap: 6px; min-width: 0; }
 .metric span { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
@@ -216,7 +257,7 @@ input:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px 
   left: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   min-height: calc(64px + env(safe-area-inset-bottom));
   padding: 5px max(7px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(7px, env(safe-area-inset-right));
   border-top: 1px solid var(--line);

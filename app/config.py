@@ -37,6 +37,11 @@ class Settings:
     max_tool_output_chars: int
     auto_escalation_enabled: bool
     usage_log_path: Path
+    molit_api_key: str
+    rone_api_key: str
+    real_estate_source_timeout_seconds: int
+    real_estate_source_max_bytes: int
+    real_estate_policy_feed_urls: tuple[str, ...]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -57,6 +62,11 @@ class Settings:
         usage_path = Path(os.getenv("USAGE_LOG_PATH", "logs/llm_usage.jsonl")).expanduser()
         if not usage_path.is_absolute():
             usage_path = Path.cwd() / usage_path
+        policy_feed_urls = tuple(
+            value.strip()
+            for value in os.getenv("REAL_ESTATE_POLICY_FEED_URLS", "").split(";")
+            if value.strip()
+        )
         return cls(
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
@@ -74,6 +84,15 @@ class Settings:
             max_tool_output_chars=_bounded_int("MAX_TOOL_OUTPUT_CHARS", 20_000, 1_000, 100_000),
             auto_escalation_enabled=_boolean("AUTO_ESCALATION_ENABLED", True),
             usage_log_path=usage_path.resolve(),
+            molit_api_key=os.getenv("MOLIT_API_KEY", "").strip(),
+            rone_api_key=os.getenv("RONE_API_KEY", "").strip(),
+            real_estate_source_timeout_seconds=_bounded_int(
+                "REAL_ESTATE_SOURCE_TIMEOUT_SECONDS", 20, 3, 120
+            ),
+            real_estate_source_max_bytes=_bounded_int(
+                "REAL_ESTATE_SOURCE_MAX_BYTES", 2_000_000, 10_000, 10_000_000
+            ),
+            real_estate_policy_feed_urls=policy_feed_urls,
         )
 
     def has_provider_key(self, provider: str) -> bool:
